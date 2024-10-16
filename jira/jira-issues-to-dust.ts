@@ -28,6 +28,7 @@ if (missingEnvVars.length > 0) {
 
 const DUST_RATE_LIMIT = 120; // requests per minute
 const ISSUES_UPDATED_SINCE = "24h";
+const PROJECTS = ['MME'];
 
 const jiraApi = axios.create({
   baseURL: `https://${JIRA_SUBDOMAIN}/rest/api/`,
@@ -153,7 +154,7 @@ async function getIssuesUpdatedLast24Hours(): Promise<JiraIssue[]> {
   const makeRequest = async (retryCount = 0): Promise<AxiosResponse<JiraSearchResponse>> => {
     try {
       return await jiraApi.post("/latest/search", {
-        jql: `updated >= -${ISSUES_UPDATED_SINCE} AND project in (MME,MBO) ORDER BY updated DESC`,
+        jql: `updated >= -${ISSUES_UPDATED_SINCE} AND project in (${PROJECTS.join(',')}) ORDER BY updated DESC`,
         startAt,
         maxResults,
         fields: [

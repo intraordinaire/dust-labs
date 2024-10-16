@@ -39,12 +39,6 @@ Labels: test
 Components: 
 Sprint: N/A
 Epic: N/A
-Time Tracking:
-  Original Estimate: N/A
-  Remaining Estimate: N/A
-  Time Spent: N/A
-Votes: 0
-Watches: 1
 Fix Versions: 
 Affected Versions: 
 Subtasks: 
@@ -77,7 +71,7 @@ Create a `.env` file in the root directory of the project with the following var
 ```
 JIRA_SUBDOMAIN=your-jira-subdomain
 JIRA_EMAIL=your-jira-email
-JIRA_API_TOKEN=your-jira-api-token
+JIRA_BASIC_AUTH_TOKEN=your-jira-api-token
 DUST_API_KEY=your-dust-api-key
 DUST_WORKSPACE_ID=your-dust-workspace-id
 DUST_DATASOURCE_ID=your-dust-datasource-id
@@ -89,8 +83,8 @@ Replace the placeholder values with your actual Jira and Dust credentials.
 
 You can adjust the following constants in the script:
 
-- `THREADS_NUMBER`: Number of concurrent requests (default: 5)
 - `ISSUES_UPDATED_SINCE`: Time range for fetching updated issues (default: '24h')
+- `PROJECTS`: The projects you want to fetch the issues from (default: 'MME')
 
 ## Usage
 
@@ -137,9 +131,6 @@ This will execute the `jira-issues-to-dust.ts` script using `ts-node`.
 - **Dust API Errors**:
   - Verify your Dust API key, workspace ID, and datasource ID in the `.env` file.
   - Ensure the specified datasource exists and you have write permissions.
-
-- **Rate Limiting**:
-  - If you encounter rate limiting issues, try reducing the `THREADS_NUMBER` constant.
 
 - **Memory Issues**:
   - For large Jira instances, you might need to process issues in batches. Consider modifying the script to fetch and process issues in smaller time ranges.
