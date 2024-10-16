@@ -55,8 +55,8 @@ This is the first comment of the issue
 
 1. Clone this repository:
    ```bash
-   git git@github.com:dust-tt/dust-labs.git
-   cd zendesk
+   git git@github.com:intraordinaire/dust-labs.git
+   cd jira
    ```
 
 2. Install dependencies:
