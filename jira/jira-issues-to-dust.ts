@@ -1,20 +1,18 @@
-import axios, { AxiosResponse, AxiosError } from "axios";
+import axios, { AxiosResponse } from "axios";
 import * as dotenv from "dotenv";
 import Bottleneck from "bottleneck";
 
 dotenv.config();
 
 const JIRA_SUBDOMAIN = process.env.JIRA_SUBDOMAIN;
-const JIRA_EMAIL = process.env.JIRA_EMAIL;
-const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
+const JIRA_BASIC_AUTH_TOKEN = process.env.JIRA_BASIC_AUTH_TOKEN;
 const DUST_API_KEY = process.env.DUST_API_KEY;
 const DUST_WORKSPACE_ID = process.env.DUST_WORKSPACE_ID;
 const DUST_DATASOURCE_ID = process.env.DUST_DATASOURCE_ID;
 
 const requiredEnvVars = [
   'JIRA_SUBDOMAIN',
-  'JIRA_EMAIL',
-  'JIRA_API_TOKEN',
+  'JIRA_BASIC_AUTH_TOKEN',
   'DUST_API_KEY',
   'DUST_WORKSPACE_ID',
   'DUST_DATASOURCE_ID'
@@ -32,13 +30,10 @@ const DUST_RATE_LIMIT = 120; // requests per minute
 const ISSUES_UPDATED_SINCE = "24h";
 
 const jiraApi = axios.create({
-  baseURL: `https://${JIRA_SUBDOMAIN}.atlassian.net/rest/api/3`,
-  auth: {
-    username: JIRA_EMAIL as string,
-    password: JIRA_API_TOKEN as string,
-  },
+  baseURL: `https://${JIRA_SUBDOMAIN}/rest/api/`,
   headers: {
     "Content-Type": "application/json",
+    "Authorization": `Basic ${JIRA_BASIC_AUTH_TOKEN}`
   },
   maxContentLength: Infinity,
   maxBodyLength: Infinity,
@@ -152,13 +147,13 @@ interface JiraSearchResponse {
 async function getIssuesUpdatedLast24Hours(): Promise<JiraIssue[]> {
   let allIssues: JiraIssue[] = [];
   let startAt = 0;
-  const maxResults = 50;
+  const maxResults = 1000;
   let total = 0;
 
   const makeRequest = async (retryCount = 0): Promise<AxiosResponse<JiraSearchResponse>> => {
     try {
-      return await jiraApi.post("/search", {
-        jql: `updated >= -${ISSUES_UPDATED_SINCE} ORDER BY updated DESC`,
+      return await jiraApi.post("/latest/search", {
+        jql: `updated >= -${ISSUES_UPDATED_SINCE} AND project in (MME,MBO) ORDER BY updated DESC`,
         startAt,
         maxResults,
         fields: [
@@ -176,13 +171,6 @@ async function getIssuesUpdatedLast24Hours(): Promise<JiraIssue[]> {
           "resolution",
           "labels",
           "components",
-          "timeoriginalestimate",
-          "timeestimate",
-          "timespent",
-          "votes",
-          "watches",
-          "fixVersions",
-          "versions",
           "subtasks",
           "issuelinks",
           "attachment",
@@ -228,16 +216,6 @@ async function getIssuesUpdatedLast24Hours(): Promise<JiraIssue[]> {
   return allIssues;
 }
 
-function formatDescription(
-  description: JiraIssue["fields"]["description"]
-): string {
-  return (
-    description?.content
-      .map((c) => c.content.map((cc) => cc.text).join(""))
-      .join("\n") || ""
-  );
-}
-
 function formatComments(
   comments: JiraIssue["fields"]["comment"]["comments"]
 ): string {
@@ -247,9 +225,7 @@ function formatComments(
 [${comment.created}] Author: ${comment.author.displayName} (${
         comment.author.emailAddress
       })
-${comment.body.content
-  .map((c) => c.content.map((cc) => cc.text).join(""))
-  .join("\n")}
+${comment.body}
 `
     )
     .join("\n");
@@ -260,11 +236,9 @@ async function upsertToDustDatasource(issue: JiraIssue) {
   const content = `
 Issue Key: ${issue.key}
 ID: ${issue.id}
-URL: ${issue.self}
+URL: https://${JIRA_SUBDOMAIN}/browse/${issue.key}
 Summary: ${issue.fields.summary}
-Description:
-${formatDescription(issue.fields.description)}
-
+Description: ${issue.fields.description}
 Issue Type: ${issue.fields.issuetype.name}
 Status: ${issue.fields.status.name}
 Priority: ${issue.fields.priority.name}
@@ -287,14 +261,6 @@ Labels: ${issue.fields.labels.join(", ")}
 Components: ${issue.fields.components.map((c) => c.name).join(", ")}
 Sprint: ${issue.fields.sprint ? issue.fields.sprint.name : "N/A"}
 Epic: ${issue.fields.epic ? issue.fields.epic.name : "N/A"}
-Time Tracking:
-  Original Estimate: ${issue.fields.timeoriginalestimate || "N/A"}
-  Remaining Estimate: ${issue.fields.timeestimate || "N/A"}
-  Time Spent: ${issue.fields.timespent || "N/A"}
-Votes: ${issue.fields.votes.votes}
-Watches: ${issue.fields.watches.watchCount}
-Fix Versions: ${issue.fields.fixVersions.map((v) => v.name).join(", ")}
-Affected Versions: ${issue.fields.versions.map((v) => v.name).join(", ")}
 Subtasks: ${issue.fields.subtasks
     .map((st) => `${st.key}: ${st.fields.summary}`)
     .join(", ")}
@@ -312,7 +278,6 @@ Attachments: ${issue.fields.attachment.map((a) => a.filename).join(", ")}
 Comments:
 ${formatComments(issue.fields.comment.comments)}
   `.trim();
-
   try {
     await dustApi.post(
       `/w/${DUST_WORKSPACE_ID}/data_sources/${DUST_DATASOURCE_ID}/documents/${documentId}`,
@@ -334,12 +299,12 @@ async function main() {
   try {
     const recentIssues = await getIssuesUpdatedLast24Hours();
     console.log(
-      `Found ${recentIssues.length} issues updated in the last 24 hours.`
+      `Found ${recentIssues.length} issues updated in the last ${ISSUES_UPDATED_SINCE}.`
     );
 
     const limiter = new Bottleneck({
       maxConcurrent: DUST_RATE_LIMIT,
-      minTime: 60 * 1000 / DUST_RATE_LIMIT,
+      minTime: 1000,
     });
 
     const tasks = recentIssues.map((issue) =>
